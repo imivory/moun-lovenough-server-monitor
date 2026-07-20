@@ -1,0 +1,53 @@
+  name: Server Monitor
+
+  on:
+    schedule:
+      - cron: '*/5 * * * *'
+    workflow_dispatch:
+
+  jobs:
+    monitor:
+      runs-on: ubuntu-latest
+      steps:
+        - name: Check servers
+          env:
+            BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+            CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          run: |
+            send_alert() {
+              curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+                -d chat_id="${CHAT_ID}" \
+                -d text="${1}" \
+                -d parse_mode="HTML"
+            }
+
+            check_http() {
+              local name=$1
+              local host=$2
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "http://${host}")
+              if [ "$CODE" = "000" ]; then
+                send_alert "🚨 [${name}] HTTP 응답 없음 (${host})"
+              fi
+            }
+
+            check_port() {
+              local name=$1
+              local host=$2
+              local port=$3
+              local label=$4
+              if ! nc -z -w5 "$host" "$port" > /dev/null 2>&1; then
+                send_alert "🚨 [${name}] ${label} 포트(${port}) 응답 없음"
+              fi
+            }
+
+            # CDN&ADMIN (49.247.173.92)
+            check_http "CDN&ADMIN" "49.247.173.92"
+            check_port "CDN&ADMIN" "49.247.173.92" 22 "SSH"
+
+            # 서비스 서버1 (49.247.46.205)
+            check_http "서비스서버1" "49.247.46.205"
+            check_port "서비스서버1" "49.247.46.205" 22 "SSH"
+
+            # 서비스 서버2 (49.247.43.46)
+            check_http "서비스서버2" "49.247.43.46"
+            check_port "서비스서버2" "49.247.43.46" 22 "SSH"
